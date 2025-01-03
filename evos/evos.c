@@ -1,8 +1,8 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "plf/evos/evos.h"
-#include "plf/rtos/rtos.h"
+#include "evos/evos.h"
+
 
 /*******************************************************************************
  *    Type definitions
