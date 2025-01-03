@@ -1,13 +1,67 @@
-/*******************************************************************************
- * @file    ad5933.c
+/**
+ * @file    ics.c
  * @brief   Implementation of the AD5933 impedance converter / network analyzer.
+ * 
+ * This module provides an interface to the AD5933 chip, using Protothreads and an event-based OS to handle tasks effectively. The design choices focus on managing non-blocking operations, dynamic scheduling, and modular task execution without complicating the code.
  *
- * This module provides an interface to the AD5933 chip. It initializes the chip,
- * configures frequency sweep parameters, starts a sweep, reads back samples, and
- * allows aborting any ongoing sweep. It also contains helper functions to
- * perform I2C read/write operations in a blocking manner. 
- *
- ******************************************************************************/
+ * @details Key design decisions include:
+ * - Using Protothreads to handle tasks like frequency sweeps and sample acquisition.
+ * - Leveraging an event-based OS for efficient event handling and scheduling.
+ * - Keeping the implementation modular and responsive, avoiding state machine complexity.
+ */
+
+/**
+ * @section benefits Why Protothreads and Event-Based OS?
+ * 
+ * The decisions in ics.c are driven by the need for non-blocking operations and modularity:
+ * 
+ * @subsection frequency_sweeps Managing Frequency Sweeps
+ * 
+ * - **State Management:**
+ *   - Frequency sweeps involve multiple steps: initializing, running, and finishing.
+ *   - Protothreads simplify transitions between these steps without an explicit state machine.
+ * 
+ * - **Non-Blocking Execution:**
+ *   - During sweeps, the thread yields control, allowing other operations to proceed.
+ *   - This ensures the system remains responsive while the sweep progresses.
+ * 
+ * @subsection i2c_handling Handling I2C Communication
+ * 
+ * - **Asynchronous Reads/Writes:**
+ *   - I2C communication often involves waiting for data or hardware readiness.
+ *   - Using Protothreads allows these waits to be non-blocking, yielding control back to the system.
+ * 
+ * - **Retry Logic:**
+ *   - If I2C operations fail, Protothreads make it straightforward to retry without bloating the main logic.
+ * 
+ * @subsection event_handling Event Integration
+ * 
+ * - **Event-Driven Flow:**
+ *   - Events like `EvosEventRegister` drive task execution.
+ *   - Tasks are triggered dynamically, based on conditions, without manual polling.
+ * 
+ * - **Flexible Scheduling:**
+ *   - Macros like `PT_YIELD_AND_EVOS_SET_NOW` and `PT_YIELD_AND_EVOS_SET_DELTA` control when tasks run.
+ *   - This approach avoids rigid timelines and keeps the system adaptable.
+ * 
+ * @subsection sample_reading Sample Acquisition and Callbacks
+ * 
+ * - **Real-Time Data Acquisition:**
+ *   - The `ReadSamples` Protothread reads real and imaginary data from the AD5933.
+ *   - It yields while waiting for valid data, ensuring other tasks aren’t stalled.
+ * 
+ * - **Callbacks for Processing:**
+ *   - Data is passed to callbacks (`sampleCb`) for further processing, keeping acquisition and processing decoupled.
+ * 
+ * @section integration How Everything Fits Together
+ * 
+ * - **Modular Components:**
+ *   - Protothreads handle specific tasks like I2C communication and sweeps.
+ *   - The event-based OS schedules these tasks based on triggers, ensuring smooth integration.
+ * 
+ * - **Non-Blocking Logic:**
+ *   - Every part of the system works without blocking the main execution flow, maintaining high responsiveness.
+ */
 
 /*******************************************************************************
  * Includes
