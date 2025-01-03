@@ -8,9 +8,7 @@ extern "C" {
 /******************************************************************************/
 
 /* configuration of EvOS ... */
-#include "plf/plf.h"
-#include "plf/cfg/evos_cfg.h"
-#include "plf/cli/cli.h"
+#include "cfg/evos_cfg.h"
 
 /******************************************************************************/
 
