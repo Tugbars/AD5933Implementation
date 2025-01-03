@@ -46,7 +46,16 @@ static PlfTime_t        startTime, stopTime;
 #endif /*  */
 /******************************************************************************/
 
-/* Register event */
+/*******************************************************************************
+ * @brief Register a new event in the system.
+ * 
+ * @param[in] pFunc Function to execute when the event triggers.
+ * @param[in] pName Name of the event for tracing purposes.
+ * @return Handle to the registered event.
+ * 
+ * @details This function allocates an available slot in the event pool for
+ * the new event. If the pool is full, the system halts execution.
+ ******************************************************************************/
 EvosEventHandle_t EvosEventRegister(
   const EvosEventFunc_t  pFunc,
   const char * const pName)
@@ -66,7 +75,13 @@ EvosEventHandle_t EvosEventRegister(
   return i;
 }
 
-/* clear event  */
+/*******************************************************************************
+ * @brief Clear an event from the system.
+ * 
+ * @param[in] event Handle to the event to clear.
+ * 
+ * @details Disables the specified event and clears its timing and parameters.
+ ******************************************************************************/
 void EvosEventClear(
   const EvosEventHandle_t  event)
 {
@@ -80,7 +95,16 @@ void EvosEventClear(
   }
 }
 
-/* add repeated time event */
+/*******************************************************************************
+ * @brief Schedule a recurring event with a specific time interval.
+ * 
+ * @param[in] event Handle to the event.
+ * @param[in] firstTime Time for the first occurrence of the event.
+ * @param[in] reloadTime Time interval for subsequent occurrences.
+ * @param[in] param Parameter to pass to the event handler.
+ * 
+ * @details Sets the event to trigger repeatedly at the specified interval.
+ ******************************************************************************/
 void EvosEventSetAndReload(
   const EvosEventHandle_t event,
   const PlfTime_t firstTime, 
@@ -98,7 +122,15 @@ void EvosEventSetAndReload(
   }
 }
 
-/* add one-shoot time event */
+/*******************************************************************************
+ * @brief Schedule a one-time event.
+ * 
+ * @param[in] event Handle to the event.
+ * @param[in] time Absolute time when the event should trigger.
+ * @param[in] param Parameter to pass to the event handler.
+ * 
+ * @details Configures the event to trigger once at the specified time.
+ ******************************************************************************/
 void EvosEventSet(
   const EvosEventHandle_t event,
   const PlfTime_t time, 
@@ -115,7 +147,13 @@ void EvosEventSet(
   }
 }
 
-/* add one-shoot time event, expire after "deltaTime" from now */
+/*******************************************************************************
+ * @brief Schedule a one-time event with a delay from the current time.
+ * 
+ * @param[in] event Handle to the event.
+ * @param[in] deltaTime Delay in ticks from the current time.
+ * @param[in] param Parameter to pass to the event handler.
+ ******************************************************************************/
 void EvosEventSetDelta(
   const EvosEventHandle_t event,
   const PlfTime_t         deltaTime, 
@@ -123,6 +161,7 @@ void EvosEventSetDelta(
 {
   EvosEventSet(event, evosCurrentTime+deltaTime, param);
 }
+
 
 void EvosEventSetDelta2(
   const EvosEventHandle_t event,
@@ -133,7 +172,12 @@ void EvosEventSetDelta2(
   EvosEventSet(event, evosCurrentTime+deltaTime, param);
 }
 
-/* add one-shoot time event, expire ASAP */
+/*******************************************************************************
+ * @brief Schedule an event to trigger immediately.
+ * 
+ * @param[in] event Handle to the event.
+ * @param[in] param Parameter to pass to the event handler.
+ ******************************************************************************/
 void EvosEventSetNow(
   const EvosEventHandle_t event, 
   EvosEventParam_t param)
@@ -252,60 +296,3 @@ void EvosInit(void)
 }
 
 
-/******************************************************************************/
-#ifdef CLI_ENABLE
-/******************************************************************************/
-
-int_fast16_t CliEvosStat(CliParam_t param1, CliParam_t param2, CliParam_t param3)
-{
-  char buf[80];
-  static const char event_list_txt[] =
-	"EVOS Events:" CLI_NL
-	"  Name             No      Count   Time(ms)   CPU(pct)";
-  static const char  format_txt[] =
-	"%4d %10ld %10ld %10d";
-
-  PlfTime_t diffTime, measureStopTime;
-  int i,j;
-  int free = 0;
-
-  CliWriteLine();
-
-  PlfTimeMsGet(&measureStopTime);
-  diffTime = (measureStopTime - measureStartTime);
-
-  /* Event info */
-
-  CliWriteLn(event_list_txt);
-  for (i=0; i<EVOS_POOL_SIZE; i++) {
-	if (evosEventPool[i].func != 0) {
-	  buf[17] = 0;
-	  strcpy((char *)buf, "  ");
-	  strncat((char *)buf, evosEventPool[i].name, 15);
-	  for (j=strlen((char *)buf); j<17; j++)
-			  buf[j] = ' ';
-	  sprintf(
-		(char *)(buf+strlen((char *)buf)),
-		format_txt,
-		i,
-		(long int)evosEventLog[i].count,
-		(long int)evosEventLog[i].time,
-		(int)(100L*(uint32_t)(evosEventLog[i].time)) / (uint32_t)diffTime);
-
-	  CliWriteLn(buf);
-	  /* Restart accumulation of processing time. */
-	  evosEventLog[i].time = 0;
-	} else {
-	  free++;
-	}
-  }
-  memset(&evosEventLog, 0, sizeof(evosEventLog));
-  CliPrintf("Free handles: %u" CLI_NL, free);
-  CliWriteLine();
-
-  return CLI_RESULT_OK;
-}
-
-/******************************************************************************/
-#endif /*   */
-/******************************************************************************/
