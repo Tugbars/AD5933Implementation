@@ -1,67 +1,101 @@
 /**
  * @file    ics.c
  * @brief   Implementation of the AD5933 impedance converter / network analyzer.
- * 
- * This module provides an interface to the AD5933 chip, using Protothreads and an event-based OS to handle tasks effectively. The design choices focus on managing non-blocking operations, dynamic scheduling, and modular task execution without complicating the code.
  *
- * @details Key design decisions include:
- * - Using Protothreads to handle tasks like frequency sweeps and sample acquisition.
- * - Leveraging an event-based OS for efficient event handling and scheduling.
- * - Keeping the implementation modular and responsive, avoiding state machine complexity.
+ * This module provides an interface to the AD5933 chip using:
+ * - **Protothreads** for lightweight, stackless concurrency.
+ * - **EVOS (Event-based OS)** for event scheduling and timing.
+ *
+ * @section integration Overall Integration of EVOS and Protothreads
+ *
+ * The design pairs EVOS events with Protothread "steps" to achieve non-blocking,
+ * cooperative multitasking on a single-threaded MCU:
+ * - **EVOS Scheduling**: 
+ *   - An event (see @ref drvHandle) is registered with EVOS via `EvosEventRegister`.
+ *   - EVOS periodically invokes the event’s callback (`DriverOnEvent`), which runs
+ *     the main protothread function (`DriverUpdate`) one step at a time.
+ * - **Protothreads Execution**:
+ *   - Protothreads (`DriverUpdate`, `ReadSamples`) use `PT_BEGIN` and `PT_YIELD` 
+ *     macros to yield control back to EVOS. 
+ *   - This allows other events and threads to execute between yields, 
+ *     preventing blocking of the main loop.
+ *
+ * Combining these two abstractions allows:
+ * - **Non-Blocking I2C** reads/writes, where each step yields if the hardware
+ *   needs more time, avoiding a busy-wait or blocking delay.
+ * - **Dynamic Scheduling** of tasks (like frequency sweeps) without manual 
+ *   polling. Events are triggered based on time (`EvosEventSetDelta2`) or 
+ *   immediate triggers (`EvosEventSetNow`).
+ * - **Modular Task Execution**, where each protothread encapsulates a 
+ *   distinct flow (e.g., reading samples) while EVOS manages the timing 
+ *   and sequence of when that flow runs.
+ *
+ * @section benefits Why Protothreads and Event-Based OS?
+ *
+ * - **State Management**: Protothreads remove the need for explicit state 
+ *   machines in the application logic, simplifying transitions between 
+ *   different stages of a frequency sweep.
+ * - **Non-Blocking Operation**: Both I2C operations and lengthy sweeps 
+ *   are run cooperatively, allowing the rest of the system to proceed 
+ *   without stalling.
+ * - **Dynamic Scheduling**: EVOS triggers tasks based on time or conditions, 
+ *   avoiding tight loops or rigid cycles in the main loop.
+ *
+ * @subsection usage_flow Typical Usage Flow
+ * 1. **Initialization**: 
+ *    - `HalIcsInit()` registers an EVOS event (`drvHandle`), initializes 
+ *      the protothread, and schedules the first run after a power-up wait.
+ * 2. **Detection & Configuration**: 
+ *    - The `DriverUpdate` protothread runs in steps, detecting the AD5933,
+ *      configuring clocks/gains, and then transitions to an idle state.
+ * 3. **Starting a Frequency Sweep**:
+ *    - An external call to `HalIcsStartFreqSweep()` sets up a sweep callback 
+ *      and flags the system to enter the sweep routine in the next protothread 
+ *      iteration.
+ * 4. **Reading Samples**:
+ *    - The nested protothread `ReadSamples` handles I2C polling of real and 
+ *      imaginary data, yielding periodically to allow other events to execute.
+ * 5. **Completion & Power Down**:
+ *    - Once the sweep is complete (or aborted), the protothread resets the 
+ *      AD5933 and returns to idle.
  */
 
 /**
- * @section benefits Why Protothreads and Event-Based OS?
- * 
- * The decisions in ics.c are driven by the need for non-blocking operations and modularity:
- * 
- * @subsection frequency_sweeps Managing Frequency Sweeps
- * 
- * - **State Management:**
+ * @section frequency_sweeps Managing Frequency Sweeps
+ *
+ * - **State Management**:
  *   - Frequency sweeps involve multiple steps: initializing, running, and finishing.
  *   - Protothreads simplify transitions between these steps without an explicit state machine.
- * 
- * - **Non-Blocking Execution:**
+ * - **Non-Blocking Execution**:
  *   - During sweeps, the thread yields control, allowing other operations to proceed.
  *   - This ensures the system remains responsive while the sweep progresses.
- * 
- * @subsection i2c_handling Handling I2C Communication
- * 
- * - **Asynchronous Reads/Writes:**
+ *
+ * @section i2c_handling Handling I2C Communication
+ *
+ * - **Asynchronous Reads/Writes**:
  *   - I2C communication often involves waiting for data or hardware readiness.
- *   - Using Protothreads allows these waits to be non-blocking, yielding control back to the system.
- * 
- * - **Retry Logic:**
+ *   - Using Protothreads allows these waits to be non-blocking, yielding control back to the system (EVOS).
+ * - **Retry Logic**:
  *   - If I2C operations fail, Protothreads make it straightforward to retry without bloating the main logic.
- * 
- * @subsection event_handling Event Integration
- * 
- * - **Event-Driven Flow:**
+ *
+ * @section event_handling Event Integration
+ *
+ * - **Event-Driven Flow**:
  *   - Events like `EvosEventRegister` drive task execution.
  *   - Tasks are triggered dynamically, based on conditions, without manual polling.
- * 
- * - **Flexible Scheduling:**
+ * - **Flexible Scheduling**:
  *   - Macros like `PT_YIELD_AND_EVOS_SET_NOW` and `PT_YIELD_AND_EVOS_SET_DELTA` control when tasks run.
  *   - This approach avoids rigid timelines and keeps the system adaptable.
- * 
- * @subsection sample_reading Sample Acquisition and Callbacks
- * 
- * - **Real-Time Data Acquisition:**
+ *
+ * @section sample_reading Sample Acquisition and Callbacks
+ *
+ * - **Real-Time Data Acquisition**:
  *   - The `ReadSamples` Protothread reads real and imaginary data from the AD5933.
  *   - It yields while waiting for valid data, ensuring other tasks aren’t stalled.
- * 
- * - **Callbacks for Processing:**
+ * - **Callbacks for Processing**:
  *   - Data is passed to callbacks (`sampleCb`) for further processing, keeping acquisition and processing decoupled.
- * 
- * @section integration How Everything Fits Together
- * 
- * - **Modular Components:**
- *   - Protothreads handle specific tasks like I2C communication and sweeps.
- *   - The event-based OS schedules these tasks based on triggers, ensuring smooth integration.
- * 
- * - **Non-Blocking Logic:**
- *   - Every part of the system works without blocking the main execution flow, maintaining high responsiveness.
  */
+
 
 /*******************************************************************************
  * Includes
