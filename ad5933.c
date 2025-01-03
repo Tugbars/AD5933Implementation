@@ -1,5 +1,5 @@
 /*******************************************************************************
- * @file    ics.c
+ * @file    ad5933.c
  * @brief   Implementation of the AD5933 impedance converter / network analyzer.
  *
  * This module provides an interface to the AD5933 chip. It initializes the chip,
@@ -21,6 +21,7 @@
 #include "ics.h"
 #include "pt.h"
 #include "evos.h"
+#include "ad5933.h"
 
 /*******************************************************************************
  * Defines
