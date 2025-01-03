@@ -19,8 +19,8 @@
 #include <stdarg.h>  // Added for variadic functions
 
 #include "ics.h"
-#include "pt.h"
-#include "evos.h"
+#include "pt/pt.h"
+#include "evos/evos.h"
 #include "ad5933.h"
 
 /*******************************************************************************
